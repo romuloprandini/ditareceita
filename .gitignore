@@ -1,0 +1,8 @@
+.vscode
+.npmrc
+node_modules/*
+npm-debug.log
+package-lock.json
+.firebaserc
+firebase-debug.log
+service-account-credentials.json
