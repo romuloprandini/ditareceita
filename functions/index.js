@@ -37,11 +37,41 @@ app.middleware(conv => {
 });
 
 app.intent("Default Welcome Intent", conv => {
+  conv.contexts.delete(AppContexts.SELECTED_RECIPE);
   conv.ask(response("Olá, qual receita iremos preparar hoje?"));
   conv.ask(
     new Suggestions(["Bolo de cenoura", "Torta de maçã", "Salada de frutas"])
   );
 });
+
+function totalTimeToString(totalTime) {
+  totalTime = totalTime.replace('PT','');
+  if(totalTime.indexOf('H') > -1 && totalTime.indexOf('M') > -1) {
+    totalTime = totalTime.replace('H',':').replace('M','');
+    if(totalTime.indexOf(':') < 2) {
+      totalTime = '0'+totalTime;
+    }
+    if(totalTime.indexOf(':') === totalTime.length - 2) {
+      totalTime = totalTime.substr(0, totalTime.indexOf(':') + 1) + '0' + totalTime.substr(totalTime.indexOf(':') + 1);
+    }
+    return totalTime;
+  } 
+  else if(totalTime.indexOf('H') > -1) {
+    totalTime = totalTime.replace('H','');
+    if(totalTime === '1') {
+    return totalTime + ' Hora';
+    }
+    return totalTime + ' Horas';
+  } 
+  else if(totalTime.indexOf('M') > -1) {
+    totalTime = totalTime.replace('M','');
+    if(totalTime === '1') {
+    return totalTime + ' Minuto';
+    }
+    return totalTime + ' Minutos';
+  }
+  return 'N/I';
+}
 
 // If the action has screen display list to user select
 function searchRecipeVisualHandler(conv, data) {
@@ -51,6 +81,7 @@ function searchRecipeVisualHandler(conv, data) {
   const items = data.recipes.reduce((acc, recipe) => {
     acc[recipe.objectID] = {
       title: recipe.name,
+      description: `Rendimento: ${recipe.recipeYield}\nTempo Preparo: ${totalTimeToString(recipe.totalTime)}`,
       image: new Image({
         url: recipe.image,
         alt: recipe.name
@@ -110,6 +141,7 @@ app.intent("Recipe Selected", (conv, params, option) => {
           conv.ask(
             new BasicCard({
               title: recipe.name,
+              subtitle: `Rendimento: ${recipe.recipeYield}\nTempo Preparo: ${totalTimeToString(recipe.totalTime)}`,
               image: new Image({
                 url: recipe.image,
                 alt: recipe.name
@@ -206,6 +238,8 @@ function dictateRecipe(dictateType, conv, params) {
     } else if (dictateType === PREPARATION_TYPE) {
       conv.ask(new Suggestions(["Ditar Ingredientes"]));
     }
+  } else {
+    conv.ask(new Suggestions(["Próximo", "Repetir", "Anterior"]));
   }
   conv.data.position = position;
   conv.data.type = dictateType;
