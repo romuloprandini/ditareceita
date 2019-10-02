@@ -6,3 +6,5 @@ package-lock.json
 .firebaserc
 firebase-debug.log
 service-account-credentials.json
+.firebase/
+**/.runtimeconfig.json

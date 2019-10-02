@@ -1,37 +1,70 @@
 "use strict";
 
-const algoliasearch = require('algoliasearch');
-const functions = require('firebase-functions');
+var mongo = require("mongodb").MongoClient;
+var ObjectID = require("mongodb").ObjectID;
+const functions = require("firebase-functions");
 
-const ALGOLIA_APP_ID=functions.config().algolia.app_id
-const ALGOLIA_API_KEY=functions.config().algolia.api_key
-const ALGOLIA_INDEX_NAME=functions.config().algolia.index_name
+const MONGODB_URL = functions.config().mongodb.url;
+const MONGODB_USERNAME = functions.config().mongodb.username;
+const MONGODB_PASSWORD = functions.config().mongodb.password;
 
 // configure algolia
 
-exports.search = (properties) => {
+async function getMongoClient() {
+  return await mongo.connect(MONGODB_URL, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    authSource: "admin",
+    auth: {
+      user: MONGODB_USERNAME,
+      password: MONGODB_PASSWORD
+    }
+  });
+}
 
-  const { query, page = 0, hitsPerPage = 10 } = properties;
+exports.search = async properties => {
+  const { term, page = 0, hitsPerPage = 10 } = properties;
 
-const algolia = algoliasearch(ALGOLIA_APP_ID, ALGOLIA_API_KEY);
-var index = algolia.initIndex(ALGOLIA_INDEX_NAME);
-
-return index
-  .search({
-    query,
-    page,
-    hitsPerPage
-  })
-  .then((responses) => ({recipes: responses.hits, total: responses.nbHits, totalPages: responses.nbPages}));
+  const mongoClient = await getMongoClient();
+  const recipes = mongoClient.db("recipes").collection("recipes");
+  try {
+    const query = recipes.find({ $text: { $search: '"'+term+'"', $language: 'pt', $caseSensitive:false, $diacriticSensitive: true } });
+    const total = await query.count();
+    if (total < 1) {
+      return {
+        recipes: [],
+        total: 0,
+        totalPages: 0
+      };
+    }
+    return await query
+      .project({ score: { $meta: "textScore" } })
+      .sort({score:{$meta:"textScore"}})
+      .skip(hitsPerPage * page)
+      .limit(hitsPerPage)
+      .toArray()
+      .then(items => {
+        return {
+          recipes: items.map(item => {
+            item.id = item._id.toString();
+            delete item['_id'];
+            return item;
+          }),
+          total: total,
+          totalPages: Math.ceil(total / hitsPerPage)
+        };
+      });
+  } finally {
+    mongoClient.close();
+  }
 };
 
-exports.get = (id) => {
-  return new Promise((resolve, reject) => {
-    const algolia = algoliasearch(ALGOLIA_APP_ID, ALGOLIA_API_KEY);
-    var index = algolia.initIndex(ALGOLIA_INDEX_NAME);
-
-    index.getObject(id, (error, response) => {
-      if (error)reject(error); else resolve(response);
-    });
-  }); 
-}
+exports.get = async id => {
+  const mongoClient = await getMongoClient();
+  const recipes = mongoClient.db("recipes").collection("recipes");
+  try {
+    return await recipes.findOne({ _id: new ObjectID(id) });
+  } finally {
+    mongoClient.close();
+  }
+};
